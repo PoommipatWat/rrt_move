@@ -16,15 +16,15 @@ class obstacle_avoidance(Node):
         self.pub_ = self.create_publisher(Bool, 'obstacle', 10)
 
         self.deg = 40
-        self.distances = 0.35
+        self.distances = 0.3
 
     def scan_callback(self, msg):
         used = []
         angle_range = np.arange(msg.angle_min, msg.angle_max, msg.angle_increment) * 180 / np.pi
         for i, val in enumerate(angle_range):
-            # if val <= self.deg or val >= 360 - self.deg:
-            #     used.append(msg.ranges[i])
-            used.append(msg.ranges[i])
+            if val <= self.deg or val >= 360 - self.deg:
+                used.append(msg.ranges[i])
+            # used.append(msg.ranges[i])
         used = np.array(used)
 
         bools = Bool()

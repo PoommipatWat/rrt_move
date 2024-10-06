@@ -112,9 +112,9 @@ class RRTStarPlanner(Node):
         
         self.get_logger().info(f"Planning path from {self.robot_position} to {goal_position}")
     
-        max_iterations = 5000
-        max_travel_distance = 1.0  # in meters
-        search_radius = 1.0  # in meters
+        max_iterations = 7500
+        max_travel_distance = 0.5  # in meters
+        search_radius = 0.5  # in meters
         goal_radius = 0.3  # in meters
 
         rrt_star = RRTStar(

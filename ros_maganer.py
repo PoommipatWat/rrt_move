@@ -24,27 +24,25 @@ class Manager(Node):
         self.control_status = False
         self.obs_sub_ = self.create_subscription(Bool, 'obstacle', self.obs_callback, 10)
         self.obs_status = False
-        self.replanning = False
         self.get_logger().info('Manager node initialized')
 
     def obs_callback(self, msg):
         self.obs_status = msg.data
+        if self.obs_status:
+            self.get_logger().info('Obstacle detected, replanning path')
+            self.request_path()
+            self.state = 0  # Reset state to request new path
 
     def control_status_callback(self, msg):
         self.control_status = msg.data
-        if not self.control_status and not self.replanning:
-            # This indicates that an obstacle was encountered and we need to replan
-            self.get_logger().info('Obstacle encountered after 3 goals, requesting new path')
-            self.replanning = True
-            self.request_path()
-        elif self.control_status and self.state == 2:
+        if self.control_status and self.state == 2:
             self.get_logger().info('Goal reached, sending next goal')
             self.send_next_goal()
 
     def timer_callback(self):
-        if self.state == 0 and not self.waiting_for_response and not self.replanning:
+        if self.state == 0 and not self.waiting_for_response:
             self.request_path()
-        elif self.state == 1 and self.path is not None and not self.replanning:
+        elif self.state == 1 and self.path is not None:
             self.send_next_goal()
 
     def request_path(self):
@@ -66,7 +64,6 @@ class Manager(Node):
                 self.get_logger().info('Path planning successful')
                 self.state = 1
                 self.index_path = 1
-                self.replanning = False
             else:
                 self.get_logger().info('Path planning failed, retrying')
                 self.request_path()
@@ -80,7 +77,7 @@ class Manager(Node):
             return
         self.path = [[point.x, point.y] for point in msg.points]
         self.get_logger().info(f'Received path with {len(self.path)} points')
-        if self.state == 1 and not self.replanning:
+        if self.state == 1:
             self.send_next_goal()
 
     def send_next_goal(self):

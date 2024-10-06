@@ -24,25 +24,34 @@ class Controller(Node):
         self.obs_sub = self.create_subscription(Bool, 'obstacle', self.obstacle_callback, 10)
         self.obstacle_detected = False
         self.goal_count = 0
-        self.waiting_for_new_path = False
 
     def set_goal_callback(self, request, response):
         self.goal = (request.x, request.y)
         self.get_logger().info(f"New goal set: {self.goal}")
         self.state = 0
-        self.waiting_for_new_path = False
         response.success = True
         return response
 
     def obstacle_callback(self, msg):
         self.obstacle_detected = msg.data
-        if self.obstacle_detected and self.goal_count > 2 and not self.waiting_for_new_path:
+        if self.obstacle_detected and self.goal_count >= 2:
             self.cmd_pub.publish(Twist())  # Stop the robot
             self.state = 0
-            self.waiting_for_new_path = True
             self.status_pub.publish(Bool(data=False))
-            self.get_logger().info('Obstacle detected, stopping robot and requesting new path')
+            self.get_logger().info('Obstacle detected after first two points, stopping robot')
             self.goal_count = 0
+
+    def quaternion_to_euler(self, x, y, z, w):
+        t0 = +2.0 * (w * x + y * z)
+        t1 = +1.0 - 2.0 * (x * x + y * y)
+        roll = np.arctan2(t0, t1)
+        t2 = +2.0 * (w * y - z * x)
+        t2 = np.clip(t2, -1.0, 1.0)
+        pitch = np.arcsin(t2)
+        t3 = +2.0 * (w * z + x * y)
+        t4 = +1.0 - 2.0 * (y * y + z * z)
+        yaw = np.arctan2(t3, t4)
+        return roll, pitch, yaw
 
     def odom_callback(self, msg):
         orientation_q = msg.pose.pose.orientation
@@ -53,15 +62,20 @@ class Controller(Node):
             yaw_degrees += 360
         self.robot_pose = (msg.pose.pose.position.x, msg.pose.pose.position.y, yaw_degrees)
 
+    def shortest_angle_diff(self, target_angle, current_angle):
+        angle_diff = target_angle - current_angle
+        if angle_diff > 180:
+            angle_diff -= 360
+        elif angle_diff < -180:
+            angle_diff += 360
+        return angle_diff
+
     def timer_callback(self):
-        if self.goal is not None and not self.waiting_for_new_path:
-            if self.goal_count <= 2 or not self.obstacle_detected:
-                if self.state == 0:
-                    self.rotate_to_goal()
-                elif self.state == 1:
-                    self.move_to_goal()
-            else:
-                self.cmd_pub.publish(Twist())  # Stop if obstacle detected after third goal
+        if self.goal is not None and (not self.obstacle_detected or self.goal_count < 2):
+            if self.state == 0:
+                self.rotate_to_goal()
+            elif self.state == 1:
+                self.move_to_goal()
 
     def rotate_to_goal(self):
         if self.robot_pose is not None:
@@ -91,32 +105,12 @@ class Controller(Node):
                 msg.linear.x = self.linear_speed
             else:
                 msg.linear.x = 0.0
-                self.get_logger().info(f'Goal reached: {self.goal_count + 1}')
+                self.get_logger().info(f'Goal reached: {self.goal_count}')
                 self.goal = None
                 self.state = 0
                 self.goal_count += 1
                 self.status_pub.publish(Bool(data=True))
             self.cmd_pub.publish(msg)
-
-    def quaternion_to_euler(self, x, y, z, w):
-        t0 = +2.0 * (w * x + y * z)
-        t1 = +1.0 - 2.0 * (x * x + y * y)
-        roll = np.arctan2(t0, t1)
-        t2 = +2.0 * (w * y - z * x)
-        t2 = np.clip(t2, -1.0, 1.0)
-        pitch = np.arcsin(t2)
-        t3 = +2.0 * (w * z + x * y)
-        t4 = +1.0 - 2.0 * (y * y + z * z)
-        yaw = np.arctan2(t3, t4)
-        return roll, pitch, yaw
-
-    def shortest_angle_diff(self, target_angle, current_angle):
-        angle_diff = target_angle - current_angle
-        if angle_diff > 180:
-            angle_diff -= 360
-        elif angle_diff < -180:
-            angle_diff += 360
-        return angle_diff
 
 def main(args=None):
     rclpy.init(args=args)
